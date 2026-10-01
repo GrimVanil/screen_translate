@@ -1,9 +1,10 @@
 import tkinter as tk
 import mss
 import easyocr
-import argostranslate.translate
 import numpy
 import keyboard
+from googletrans import Translator
+from pystray import MenuItem as item
 
 reader = easyocr.Reader(["ru", "en"], gpu=False)
 
@@ -55,25 +56,21 @@ class Screen:
             return None
         return region
 
+
 def create_window(txt):
     win = tk.Tk()
     win.attributes("-toolwindow", True)
-    
+
     win.geometry("400x300")
     label = tk.Label(text=txt, font=("Arial", 16), wraplength=350)
     label.pack()
     win.mainloop()
 
+
 def translate(text):
-    if not text.strip():
-        return ""
-    from_code = "en"
-    to_code = "ru"
-
-    translated_text = argostranslate.translate.translate(text, from_code, to_code)
-    return translated_text
-
-
+    translator = Translator()
+    translated = translator.translate(text, src="en", dest="ru")
+    return translated.text
 
 
 def main():
@@ -88,13 +85,9 @@ def main():
         result = reader.readtext(img_np, detail=0)
         result = " ".join(result)
 
-        
         russian_text = translate(result)
-        
+
         create_window(russian_text)
-
-
-
 
 
 keyboard.add_hotkey("shift+u", main)
