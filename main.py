@@ -1,21 +1,39 @@
+import os
+import sys
+import threading
 import tkinter as tk
 import mss
 import easyocr
 import numpy
-import keyboard
+from pynput import keyboard
 from googletrans import Translator
-from pystray import MenuItem as item
+import pystray
+from PIL import Image
 
-reader = easyocr.Reader(["ru", "en"], gpu=False)
+reader = None
+def get_reader():
+    global reader
+    if reader is None:
+        reader = easyocr.Reader(["ru", "en"], gpu=False)
+    return reader
 
+def resource_path(relative_path):
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+root = tk.Tk()
+root.withdraw()
 
 class Screen:
     def __init__(self):
-        self.root = tk.Tk()
+        self.root = tk.Toplevel(root)
         self.root.attributes("-fullscreen", True)
         self.root.attributes("-alpha", 0.4)
         self.root.attributes("-topmost", True)
-
+        
         self.x = 0
         self.y = 0
         self.end_x = 0
@@ -27,8 +45,8 @@ class Screen:
         self.canvas.bind("<ButtonRelease-1>", self.pressed_release)
 
         self.rect = self.canvas.create_rectangle(0, 0, 0, 0, outline="red", width=2)
-
-        self.root.mainloop()
+        
+        self.root.wait_window()
 
     def pressed(self, event):
         self.x = event.x
@@ -58,37 +76,67 @@ class Screen:
 
 
 def create_window(txt):
-    win = tk.Tk()
+    win = tk.Toplevel(root)
+    win.title("Перевод")
     win.attributes("-toolwindow", True)
-
-    win.geometry("400x300")
-    label = tk.Label(text=txt, font=("Arial", 16), wraplength=350)
-    label.pack()
-    win.mainloop()
+    win.attributes("-topmost", True)
+    
+    label = tk.Label(win, text=txt, font=("Arial", 14), wraplength=380, padx=15, pady=15)
+    label.pack(expand=True, fill="both")
 
 
 def translate(text):
+    
     translator = Translator()
     translated = translator.translate(text, src="en", dest="ru")
     return translated.text
 
+def do_translate(region):
+    with mss.MSS() as sct:
+        screenshot = sct.grab(region)
+        img_np = numpy.array(screenshot)
+    ocr = get_reader()
+    result = ocr.readtext(img_np, detail=0)
+    result = " ".join(result)
+
+    russian_text = translate(result)
+
+    root.after(0, create_window, russian_text)
+
 
 def main():
     realisation = Screen()
-
     region = realisation.get_region()
-
     if region:
-        with mss.MSS() as sct:
-            screenshot = sct.grab(region)
-            img_np = numpy.array(screenshot)
-        result = reader.readtext(img_np, detail=0)
-        result = " ".join(result)
-
-        russian_text = translate(result)
-
-        create_window(russian_text)
+        trey_thread_tarslate = threading.Thread(target=do_translate, args=(region,), daemon=True)
+        trey_thread_tarslate.start()
 
 
-keyboard.add_hotkey("shift+u", main)
-keyboard.wait("shift+i")
+
+def on_quit(icon, item):
+    icon.stop()
+    root.after(0, root.destroy)
+    os._exit(0)
+
+
+def setup_tray():
+    
+    app_icon = Image.open(resource_path("icon.ico"))
+    icon = pystray.Icon(
+        "TestApp",
+        app_icon,
+        "TestApp",
+        menu=pystray.Menu(pystray.MenuItem("Выход", on_quit)),
+    )
+    icon.run()
+
+
+trey_thread_ico = threading.Thread(target=setup_tray, daemon=True)
+trey_thread_ico.start()
+
+
+hotkey = keyboard.GlobalHotKeys({
+    "<shift>+u": lambda: root.after(0, main), 
+    "<shift>+г": lambda: root.after(0, main)})
+hotkey.start()
+root.mainloop()
